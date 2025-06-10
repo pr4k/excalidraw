@@ -276,6 +276,159 @@ export const loadScene = async (
   };
 };
 
+/**
+ * Load Excalidraw scene data from a custom API endpoint
+ * @param apiUrl - The API endpoint URL to fetch scene data from
+ * @param options - Optional configuration for the API request
+ * @returns Promise<ImportedDataState> - The scene data compatible with Excalidraw
+ */
+export const loadSceneFromAPI = async (
+  apiUrl: string,
+  options?: {
+    method?: 'GET' | 'POST';
+    headers?: Record<string, string>;
+    body?: string | FormData | URLSearchParams;
+    timeout?: number;
+  }
+): Promise<ImportedDataState> => {
+  const { method = 'GET', headers = {}, body, timeout = 10000 } = options || {};
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    const response = await fetch(apiUrl, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: method === 'POST' ? body : undefined,
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Validate that the response contains valid Excalidraw data
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid API response: expected object');
+    }
+    
+    // Handle different API response formats
+    let sceneData: ImportedDataState;
+    
+    if (data.elements || data.appState || data.files) {
+      // Direct Excalidraw format
+      sceneData = {
+        elements: data.elements || [],
+        appState: data.appState || {},
+        files: data.files || {},
+      };
+    } else if (data.content) {
+      // Content field format (e.g., organisewise.me API)
+      sceneData = {
+        elements: data.content.elements || [],
+        appState: data.content.appState || {},
+        files: data.content.files || {},
+      };
+    } else if (data.scene) {
+      // Nested scene format
+      sceneData = {
+        elements: data.scene.elements || [],
+        appState: data.scene.appState || {},
+        files: data.scene.files || {},
+      };
+    } else if (data.data) {
+      // Wrapped data format
+      sceneData = {
+        elements: data.data.elements || [],
+        appState: data.data.appState || {},
+        files: data.data.files || {},
+      };
+    } else {
+      // Assume the entire response is the scene data
+      sceneData = {
+        elements: data.elements || [],
+        appState: data.appState || {},
+        files: data.files || {},
+      };
+    }
+    
+    return sceneData;
+    
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error(`API request timed out after ${timeout}ms`);
+    }
+    
+    console.error('Failed to load scene from API:', error);
+    throw new Error(`Failed to load scene from API: ${error.message}`);
+  }
+};
+
+/**
+ * Enhanced scene loader that supports API loading via URL parameters
+ * @param id - Backend scene ID (existing functionality)
+ * @param privateKey - Decryption key for backend scenes (existing functionality) 
+ * @param localDataState - Local storage data for fallback
+ * @param apiUrl - Optional API URL to load scene from
+ * @param apiOptions - Optional configuration for API requests
+ */
+export const loadSceneEnhanced = async (
+  id: string | null,
+  privateKey: string | null,
+  localDataState: ImportedDataState | undefined | null,
+  apiUrl?: string,
+  apiOptions?: Parameters<typeof loadSceneFromAPI>[1]
+) => {
+  let data;
+  
+  // Priority 1: Load from API if URL is provided
+  if (apiUrl) {
+    try {
+      const apiData = await loadSceneFromAPI(apiUrl, apiOptions);
+      data = restore(
+        apiData,
+        localDataState?.appState,
+        localDataState?.elements,
+        { repairBindings: true, refreshDimensions: false }
+      );
+    } catch (error: any) {
+      console.error('Failed to load from API, falling back to default loading:', error);
+      // Fall through to existing loading logic
+    }
+  }
+  
+  // Priority 2: Load from backend (existing functionality)
+  if (!data && id != null && privateKey != null) {
+    data = restore(
+      await importFromBackend(id, privateKey),
+      localDataState?.appState,
+      localDataState?.elements,
+      { repairBindings: true, refreshDimensions: false },
+    );
+  }
+  
+  // Priority 3: Load from local storage (existing functionality)
+  if (!data) {
+    data = restore(localDataState || null, null, null, {
+      repairBindings: true,
+    });
+  }
+
+  return {
+    elements: data.elements,
+    appState: data.appState,
+    files: data.files,
+  };
+};
+
 type ExportToBackendResult =
   | { url: null; errorMessage: string }
   | { url: string; errorMessage: null };

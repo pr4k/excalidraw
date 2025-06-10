@@ -107,6 +107,7 @@ import {
   getCollaborationLinkData,
   isCollaborationLink,
   loadScene,
+  loadSceneEnhanced,
 } from "./data";
 
 import { updateStaleImageStatuses } from "./data/FileManager";
@@ -217,25 +218,45 @@ const initializeScene = async (opts: {
     /^#json=([a-zA-Z0-9_-]+),([a-zA-Z0-9_-]+)$/,
   );
   const externalUrlMatch = window.location.hash.match(/^#url=(.*)$/);
+  
+  // Check for API loading parameters
+  const apiUrl = searchParams.get("apiUrl") || searchParams.get("api_url");
+  const apiMethod = searchParams.get("apiMethod") || searchParams.get("api_method") || 'GET';
+  const apiHeaders = searchParams.get("apiHeaders") || searchParams.get("api_headers");
+  const apiBody = searchParams.get("apiBody") || searchParams.get("api_body");
+  const apiTimeout = searchParams.get("apiTimeout") || searchParams.get("api_timeout");
 
   const localDataState = importFromLocalStorage();
 
   let scene: RestoredDataState & {
     scrollToContent?: boolean;
-  } = await loadScene(null, null, localDataState);
+  } = await loadSceneEnhanced(
+    null, 
+    null, 
+    localDataState,
+    apiUrl || undefined,
+    apiUrl ? {
+      method: apiMethod.toUpperCase() as 'GET' | 'POST',
+      headers: apiHeaders ? JSON.parse(decodeURIComponent(apiHeaders)) : undefined,
+      body: apiBody ? decodeURIComponent(apiBody) : undefined,
+      timeout: apiTimeout ? parseInt(apiTimeout, 10) : undefined,
+    } : undefined
+  );
 
   let roomLinkData = getCollaborationLinkData(window.location.href);
-  const isExternalScene = !!(id || jsonBackendMatch || roomLinkData);
+  const isExternalScene = !!(id || jsonBackendMatch || roomLinkData || apiUrl);
   if (isExternalScene) {
     if (
       // don't prompt if scene is empty
       !scene.elements.length ||
       // don't prompt for collab scenes because we don't override local storage
       roomLinkData ||
+      // don't prompt for API scenes (they're meant to be loaded directly)
+      apiUrl ||
       // otherwise, prompt whether user wants to override current scene
       (await openConfirmModal(shareableLinkConfirmDialog))
     ) {
-      if (jsonBackendMatch) {
+      if (jsonBackendMatch && !apiUrl) {
         scene = await loadScene(
           jsonBackendMatch[1],
           jsonBackendMatch[2],
@@ -243,7 +264,7 @@ const initializeScene = async (opts: {
         );
       }
       scene.scrollToContent = true;
-      if (!roomLinkData) {
+      if (!roomLinkData && !apiUrl) {
         window.history.replaceState({}, APP_NAME, window.location.origin);
       }
     } else {
