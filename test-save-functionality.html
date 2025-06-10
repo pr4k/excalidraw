@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Excalidraw API Save Test</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #333;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 5px;
+      font-weight: bold;
+    }
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .code {
+      background-color: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 5px;
+      padding: 15px;
+      margin-top: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .url-display {
+      background-color: #e7f3ff;
+      border: 1px solid #b3d7ff;
+      border-radius: 5px;
+      padding: 10px;
+      margin-top: 10px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 Excalidraw API Save/Load Test</h1>
+    
+    <div class="form-group">
+      <label for="baseUrl">Base URL:</label>
+      <input type="text" id="baseUrl" value="http://localhost:8081/proxy/organisewise" 
+             placeholder="e.g., https://prod.backend.organisewise.me">
+    </div>
+    
+    <div class="form-group">
+      <label for="documentId">Document ID: <span style="color: red;">*</span></label>
+      <input type="text" id="documentId" value="test123" 
+             placeholder="e.g., e8ff97">
+    </div>
+    
+    <div class="form-group">
+      <label for="userId">User ID (optional):</label>
+      <input type="number" id="userId" value="13" 
+             placeholder="e.g., 13">
+    </div>
+    
+    <div class="form-group">
+      <label for="contentData">Test Content (JSON):</label>
+      <textarea id="contentData" rows="10" placeholder="Excalidraw scene data...">{
+  "elements": [
+    {
+      "type": "text",
+      "id": "test-element",
+      "x": 100,
+      "y": 100,
+      "width": 250,
+      "height": 35,
+      "text": "Hello from API Save Test!",
+      "fontSize": 28,
+      "fontFamily": 1,
+      "strokeColor": "#1971c2",
+      "backgroundColor": "transparent",
+      "fillStyle": "hachure",
+      "strokeWidth": 1,
+      "roughness": 1,
+      "opacity": 100,
+      "version": 1,
+      "versionNonce": 123456789,
+      "isDeleted": false,
+      "groupIds": [],
+      "strokeSharpness": "sharp",
+      "seed": 987654321,
+      "updated": 1699123456789,
+      "link": null,
+      "locked": false,
+      "baseline": 25,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": null,
+      "originalText": "Hello from API Save Test!"
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff",
+    "currentItemStrokeColor": "#1971c2",
+    "currentItemBackgroundColor": "transparent",
+    "zoom": { "value": 1 }
+  },
+  "files": {}
+}</textarea>
+    </div>
+    
+    <button onclick="saveToAPI()" id="saveBtn">💾 Save to API</button>
+    <button onclick="loadFromAPI()" id="loadBtn">📥 Load from API</button>
+    <button onclick="startTestServer()" id="serverBtn">🚀 Start Test Server</button>
+    
+    <div id="status"></div>
+    
+    <div id="apiUrl" class="url-display" style="display: none;"></div>
+    
+    <div id="response" class="code" style="display: none;"></div>
+  </div>
+
+  <script>
+    // Mock Excalidraw scene data functions
+    function getCurrentSceneData() {
+      try {
+        const content = document.getElementById('contentData').value;
+        return JSON.parse(content);
+      } catch (e) {
+        return {
+          elements: [],
+          appState: { viewBackgroundColor: "#ffffff" },
+          files: {}
+        };
+      }
+    }
+
+    function saveSceneToAPI(apiUrl, elements, appState, files, options = {}) {
+      const { method = 'PUT', headers = {}, timeout = 10000, documentId, userId } = options;
+      
+      return new Promise(async (resolve, reject) => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
+          
+          const payload = {
+            content: { elements, appState, files }
+          };
+          
+          if (documentId) payload.unique_id = documentId;
+          if (userId) payload.user_id = userId;
+          
+          const response = await fetch(apiUrl, {
+            method,
+            headers: {
+              'Content-Type': 'application/json',
+              ...headers,
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            throw new Error(`API save failed with status ${response.status}: ${response.statusText}`);
+          }
+          
+          const result = await response.json();
+          resolve({ success: true, data: result });
+          
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            reject(new Error(`Save request timed out after ${timeout}ms`));
+          } else {
+            reject(new Error(`Failed to save to API: ${error.message}`));
+          }
+        }
+      });
+    }
+
+    function loadSceneFromAPI(apiUrl, options = {}) {
+      const { method = 'GET', headers = {}, timeout = 10000 } = options;
+      
+      return new Promise(async (resolve, reject) => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
+          
+          const response = await fetch(apiUrl, {
+            method,
+            headers: {
+              'Content-Type': 'application/json',
+              ...headers,
+            },
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+          }
+          
+          const data = await response.json();
+          
+          // Handle organisewise.me format
+          if (data.content) {
+            resolve({
+              elements: data.content.elements || [],
+              appState: data.content.appState || {},
+              files: data.content.files || {},
+            });
+          } else {
+            resolve({
+              elements: data.elements || [],
+              appState: data.appState || {},
+              files: data.files || {},
+            });
+          }
+          
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            reject(new Error(`API request timed out after ${timeout}ms`));
+          } else {
+            reject(new Error(`Failed to load from API: ${error.message}`));
+          }
+        }
+      });
+    }
+
+    function showStatus(message, isError = false) {
+      const status = document.getElementById('status');
+      status.className = `status ${isError ? 'error' : 'success'}`;
+      status.textContent = message;
+      status.style.display = 'block';
+    }
+
+    function showResponse(data) {
+      const response = document.getElementById('response');
+      response.textContent = JSON.stringify(data, null, 2);
+      response.style.display = 'block';
+    }
+
+    function updateApiUrl() {
+      const baseUrl = document.getElementById('baseUrl').value;
+      const documentId = document.getElementById('documentId').value;
+      
+      if (baseUrl && documentId) {
+        const apiUrl = `${baseUrl}/${documentId}`;
+        const urlDisplay = document.getElementById('apiUrl');
+        urlDisplay.innerHTML = `<strong>API URL:</strong> ${apiUrl}`;
+        urlDisplay.style.display = 'block';
+        return apiUrl;
+      }
+      return null;
+    }
+
+    async function saveToAPI() {
+      const baseUrl = document.getElementById('baseUrl').value;
+      const documentId = document.getElementById('documentId').value;
+      const userId = document.getElementById('userId').value;
+      
+      if (!documentId.trim()) {
+        showStatus('Document ID is required!', true);
+        return;
+      }
+      
+      const apiUrl = updateApiUrl();
+      if (!apiUrl) {
+        showStatus('Please provide both Base URL and Document ID', true);
+        return;
+      }
+      
+      try {
+        document.getElementById('saveBtn').disabled = true;
+        showStatus('Saving...');
+        
+        const sceneData = getCurrentSceneData();
+        
+        const result = await saveSceneToAPI(
+          apiUrl,
+          sceneData.elements,
+          sceneData.appState,
+          sceneData.files,
+          {
+            method: 'PUT',
+            documentId: documentId.trim(),
+            userId: userId ? parseInt(userId, 10) : undefined,
+          }
+        );
+        
+        showStatus(`✅ Saved successfully to ${documentId}`);
+        showResponse(result.data);
+        
+      } catch (error) {
+        showStatus(`❌ Save failed: ${error.message}`, true);
+        console.error('Save error:', error);
+      } finally {
+        document.getElementById('saveBtn').disabled = false;
+      }
+    }
+
+    async function loadFromAPI() {
+      const apiUrl = updateApiUrl();
+      if (!apiUrl) {
+        showStatus('Please provide both Base URL and Document ID', true);
+        return;
+      }
+      
+      try {
+        document.getElementById('loadBtn').disabled = true;
+        showStatus('Loading...');
+        
+        const sceneData = await loadSceneFromAPI(apiUrl);
+        
+        // Update the content textarea with loaded data
+        document.getElementById('contentData').value = JSON.stringify({
+          elements: sceneData.elements,
+          appState: sceneData.appState,
+          files: sceneData.files
+        }, null, 2);
+        
+        showStatus(`✅ Loaded successfully from ${document.getElementById('documentId').value}`);
+        showResponse(sceneData);
+        
+      } catch (error) {
+        showStatus(`❌ Load failed: ${error.message}`, true);
+        console.error('Load error:', error);
+      } finally {
+        document.getElementById('loadBtn').disabled = false;
+      }
+    }
+
+    function startTestServer() {
+      showStatus('ℹ️ To start the test server, run: node test-organisewise-api.js --proxy');
+      document.getElementById('response').textContent = `
+# Start the test server with:
+node test-organisewise-api.js --proxy
+
+# Then use these settings:
+Base URL: http://localhost:8081/proxy/organisewise
+Document ID: test123 (or any ID you want)
+
+# The server supports:
+- GET  /proxy/organisewise/:id - Load document
+- PUT  /proxy/organisewise/:id - Save document
+
+# For Excalidraw app integration, use:
+?apiUrl=http://localhost:8081/proxy/organisewise/test123
+      `.trim();
+      document.getElementById('response').style.display = 'block';
+    }
+
+    // Update API URL display when inputs change
+    document.getElementById('baseUrl').addEventListener('input', updateApiUrl);
+    document.getElementById('documentId').addEventListener('input', updateApiUrl);
+    
+    // Initialize
+    updateApiUrl();
+  </script>
+</body>
+</html> 

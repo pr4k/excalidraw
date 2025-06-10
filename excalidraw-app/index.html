@@ -248,5 +248,283 @@
     </script>
     <!-- end LEGACY GOOGLE ANALYTICS -->
     <% } %>
+    
+    <!-- Save to API Button Script -->
+    <script>
+      // Add save button after Excalidraw loads
+      setTimeout(() => {
+        (function addSaveButton() {
+          // Wait for Excalidraw to be ready
+          const checkExcalidraw = setInterval(() => {
+            const excalidrawWrapper = document.querySelector('.excalidraw-app');
+            if (excalidrawWrapper) {
+              clearInterval(checkExcalidraw);
+              
+              // Create save button
+              const saveButton = document.createElement('button');
+              saveButton.innerHTML = '💾 Save to API';
+              saveButton.id = 'save-to-api-btn';
+              saveButton.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 280px;
+                z-index: 9999;
+                padding: 8px 12px;
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: bold;
+                font-family: system-ui, -apple-system, sans-serif;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                transition: background-color 0.2s;
+              `;
+              
+              // Hover effects
+              saveButton.addEventListener('mouseenter', () => {
+                saveButton.style.backgroundColor = '#218838';
+              });
+              saveButton.addEventListener('mouseleave', () => {
+                if (!saveButton.disabled) {
+                  saveButton.style.backgroundColor = '#28a745';
+                }
+              });
+              
+              // Function to find Excalidraw API
+              function findExcalidrawAPI() {
+                // Method 1: Check window
+                if (window.excalidrawAPI) {
+                  return window.excalidrawAPI;
+                }
+                
+                // Method 2: Check React DevTools global
+                if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+                  const renderers = window.__REACT_DEVTOOLS_GLOBAL_HOOK__.renderers;
+                  for (let [id, renderer] of renderers) {
+                    if (renderer.findFiberByHostInstance) {
+                      try {
+                        const rootNode = document.querySelector('#root');
+                        const fiber = renderer.findFiberByHostInstance(rootNode);
+                        
+                        // Walk the fiber tree to find Excalidraw component
+                        function walkFiber(node) {
+                          if (!node) return null;
+                          
+                          if (node.type && node.type.name === 'ForwardRef' && 
+                              node.stateNode && node.stateNode.getSceneElements) {
+                            return node.stateNode;
+                          }
+                          
+                          if (node.memoizedProps && node.memoizedProps.excalidrawAPI) {
+                            return node.memoizedProps.excalidrawAPI;
+                          }
+                          
+                          // Check children
+                          if (node.child) {
+                            const result = walkFiber(node.child);
+                            if (result) return result;
+                          }
+                          
+                          // Check siblings
+                          if (node.sibling) {
+                            const result = walkFiber(node.sibling);
+                            if (result) return result;
+                          }
+                          
+                          return null;
+                        }
+                        
+                        const api = walkFiber(fiber);
+                        if (api) return api;
+                      } catch (e) {
+                        console.log('Error accessing React fiber:', e);
+                      }
+                    }
+                  }
+                }
+                
+                // Method 3: Try accessing via excalidrawRef stored in a data attribute
+                const excalidrawElement = document.querySelector('[data-testid="canvas"]');
+                if (excalidrawElement && excalidrawElement._excalidrawAPI) {
+                  return excalidrawElement._excalidrawAPI;
+                }
+                
+                // Method 4: Check if there's an excalidraw instance in the DOM
+                const allElements = document.querySelectorAll('*');
+                for (let element of allElements) {
+                  if (element._reactInternalFiber || element._reactInternalInstance) {
+                    const fiber = element._reactInternalFiber || element._reactInternalInstance;
+                    
+                    function findExcalidrawInFiber(node) {
+                      if (!node) return null;
+                      
+                      if (node.stateNode && node.stateNode.getSceneElements) {
+                        return node.stateNode;
+                      }
+                      
+                      if (node.child) {
+                        const result = findExcalidrawInFiber(node.child);
+                        if (result) return result;
+                      }
+                      
+                      if (node.return) {
+                        const result = findExcalidrawInFiber(node.return);
+                        if (result) return result;
+                      }
+                      
+                      return null;
+                    }
+                    
+                    const api = findExcalidrawInFiber(fiber);
+                    if (api) return api;
+                  }
+                }
+                
+                return null;
+              }
+              
+              // Save functionality
+              saveButton.onclick = async () => {
+                const documentId = prompt('Enter Document ID to save:', 'e8ff97');
+                if (!documentId || !documentId.trim()) return;
+                
+                try {
+                  saveButton.disabled = true;
+                  saveButton.innerHTML = '⏳ Saving...';
+                  saveButton.style.backgroundColor = '#6c757d';
+                  
+                  // Try multiple times to get the API
+                  let excalidrawAPI = null;
+                  let attempts = 0;
+                  const maxAttempts = 5;
+                  
+                  while (!excalidrawAPI && attempts < maxAttempts) {
+                    excalidrawAPI = findExcalidrawAPI();
+                    if (!excalidrawAPI) {
+                      await new Promise(resolve => setTimeout(resolve, 200));
+                      attempts++;
+                    }
+                  }
+                  
+                  if (!excalidrawAPI || !excalidrawAPI.getSceneElements) {
+                    throw new Error('Could not access Excalidraw API. Please refresh the page and try again.');
+                  }
+                  
+                  const elements = excalidrawAPI.getSceneElements();
+                  const appState = excalidrawAPI.getAppState();
+                  const files = excalidrawAPI.getFiles ? excalidrawAPI.getFiles() : {};
+                  
+                  // Log what we're sending
+                  console.log('Saving scene with:', {
+                    elements: elements.length + ' elements',
+                    appState: Object.keys(appState).length + ' appState keys',
+                    files: Object.keys(files).length + ' files'
+                  });
+                  
+                  // Save to organisewise.me API
+                  const apiUrl = `https://prod.backend.organisewise.me/draw/excalidraw/${documentId.trim()}`;
+                  
+                  const payload = {
+                    content: { elements, appState, files },
+                    unique_id: documentId.trim(),
+                    user_id: 13
+                  };
+                  
+                  const response = await fetch(apiUrl, {
+                    method: 'PUT',
+                    headers: { 
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                  });
+                  
+                  if (response.ok) {
+                    const result = await response.json();
+                    showToast(`✅ Saved successfully to ${documentId}!`, 'success');
+                    console.log('Save successful:', result);
+                  } else {
+                    const errorText = await response.text();
+                    throw new Error(`${response.status} ${response.statusText}: ${errorText}`);
+                  }
+                  
+                } catch (error) {
+                  console.error('Save error:', error);
+                  showToast(`❌ Error: ${error.message}`, 'error');
+                } finally {
+                  saveButton.disabled = false;
+                  saveButton.innerHTML = '💾 Save to API';
+                  saveButton.style.backgroundColor = '#28a745';
+                }
+              };
+              
+              document.body.appendChild(saveButton);
+              console.log('✅ Save to API button added!');
+              
+              // Set up a periodic check to expose the API to window
+              const exposeAPI = setInterval(() => {
+                const api = findExcalidrawAPI();
+                if (api && !window.excalidrawAPI) {
+                  window.excalidrawAPI = api;
+                  console.log('✅ Excalidraw API exposed to window');
+                  clearInterval(exposeAPI);
+                }
+              }, 1000);
+              
+              // Stop trying after 30 seconds
+              setTimeout(() => clearInterval(exposeAPI), 30000);
+            }
+          }, 500);
+          
+          // Stop trying after 30 seconds
+          setTimeout(() => clearInterval(checkExcalidraw), 30000);
+          
+          // Toast notification function
+          function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+              position: fixed;
+              top: 70px;
+              right: 20px;
+              z-index: 10001;
+              padding: 12px 16px;
+              border-radius: 6px;
+              color: white;
+              font-family: system-ui, -apple-system, sans-serif;
+              font-size: 14px;
+              font-weight: bold;
+              max-width: 350px;
+              word-wrap: break-word;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+              background-color: ${type === 'success' ? '#28a745' : '#dc3545'};
+              animation: slideIn 0.3s ease-out;
+            `;
+            
+            // Add CSS animation
+            if (!document.querySelector('#toast-styles')) {
+              const styles = document.createElement('style');
+              styles.id = 'toast-styles';
+              styles.textContent = `
+                @keyframes slideIn {
+                  from { transform: translateX(100%); opacity: 0; }
+                  to { transform: translateX(0); opacity: 1; }
+                }
+              `;
+              document.head.appendChild(styles);
+            }
+            
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+              toast.remove();
+            }, type === 'error' ? 7000 : 4000);
+          }
+          
+        })();
+      }, 2000); // Wait 2 seconds for app to load
+    </script>
   </body>
 </html>

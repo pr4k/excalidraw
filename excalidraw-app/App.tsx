@@ -108,6 +108,8 @@ import {
   isCollaborationLink,
   loadScene,
   loadSceneEnhanced,
+  saveSceneToAPI,
+  buildOrganisewiseAPIUrl,
 } from "./data";
 
 import { updateStaleImageStatuses } from "./data/FileManager";
@@ -386,6 +388,14 @@ const ExcalidrawWrapper = () => {
 
   const [excalidrawAPI, excalidrawRefCallback] =
     useCallbackRefState<ExcalidrawImperativeAPI>();
+
+  // Expose excalidrawAPI to window for save button
+  useEffect(() => {
+    if (excalidrawAPI) {
+      (window as any).excalidrawAPI = excalidrawAPI;
+      console.log('✅ Excalidraw API exposed to window.excalidrawAPI');
+    }
+  }, [excalidrawAPI]);
 
   const [, setShareDialogState] = useAtom(shareDialogStateAtom);
   const [collabAPI] = useAtom(collabAPIAtom);

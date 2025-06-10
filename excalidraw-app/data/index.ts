@@ -493,3 +493,106 @@ export const exportToBackend = async (
     return { url: null, errorMessage: t("alerts.couldNotCreateShareableLink") };
   }
 };
+
+/**
+ * Save Excalidraw scene data to a custom API endpoint using PUT request
+ * @param apiUrl - The API endpoint URL to save scene data to
+ * @param elements - Excalidraw elements to save
+ * @param appState - Excalidraw app state to save
+ * @param files - Excalidraw files to save
+ * @param options - Optional configuration for the API request
+ * @returns Promise<boolean> - Success status
+ */
+export const saveSceneToAPI = async (
+  apiUrl: string,
+  elements: readonly ExcalidrawElement[],
+  appState: Partial<AppState>,
+  files: BinaryFiles = {},
+  options?: {
+    method?: 'PUT' | 'POST';
+    headers?: Record<string, string>;
+    timeout?: number;
+    documentId?: string;
+    userId?: number;
+  }
+): Promise<{ success: boolean; error?: string }> => {
+  const { 
+    method = 'PUT', 
+    headers = {}, 
+    timeout = 10000,
+    documentId,
+    userId 
+  } = options || {};
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    // Prepare the payload in the format expected by the API
+    const payload: {
+      content: {
+        elements: readonly ExcalidrawElement[];
+        appState: Partial<AppState>;
+        files: BinaryFiles;
+      };
+      unique_id?: string;
+      user_id?: number;
+    } = {
+      content: {
+        elements,
+        appState,
+        files
+      }
+    };
+    
+    // Add additional fields if provided (for organisewise.me format)
+    if (documentId) {
+      payload.unique_id = documentId;
+    }
+    if (userId) {
+      payload.user_id = userId;
+    }
+    
+    const response = await fetch(apiUrl, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`API save failed with status ${response.status}: ${response.statusText}`);
+    }
+    
+    return { success: true };
+    
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      return { 
+        success: false, 
+        error: `Save request timed out after ${timeout}ms` 
+      };
+    }
+    
+    console.error('Failed to save scene to API:', error);
+    return { 
+      success: false, 
+      error: `Failed to save to API: ${error.message}` 
+    };
+  }
+};
+
+/**
+ * Helper function to construct API URL for organisewise.me format
+ * @param baseUrl - Base URL (e.g., 'https://prod.backend.organisewise.me')
+ * @param documentId - Document ID to save to
+ * @returns Complete API URL
+ */
+export const buildOrganisewiseAPIUrl = (baseUrl: string, documentId: string): string => {
+  return `${baseUrl}/draw/excalidraw/${documentId}`;
+};

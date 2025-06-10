@@ -56,10 +56,60 @@ const testOrganisewiseAPI = async () => {
 
 // Simple CORS proxy server (if needed)
 const createCORSProxy = () => {
+  // In-memory storage for demonstration
+  let storedContent = {
+    "e8ff97": {
+      "id": 141,
+      "unique_id": "e8ff97",
+      "content": {
+        "appState": {
+          "viewBackgroundColor": "#ffffff",
+          "currentItemStrokeColor": "#000000",
+          "zoom": { "value": 1 }
+        },
+        "elements": [
+          {
+            "type": "text",
+            "id": "demo-text",
+            "x": 100,
+            "y": 100,
+            "width": 200,
+            "height": 25,
+            "text": "Loaded from organisewise.me!",
+            "fontSize": 20,
+            "fontFamily": 1,
+            "strokeColor": "#000000",
+            "backgroundColor": "transparent",
+            "fillStyle": "hachure",
+            "strokeWidth": 1,
+            "roughness": 1,
+            "opacity": 100,
+            "version": 1,
+            "versionNonce": Date.now(),
+            "isDeleted": false,
+            "groupIds": [],
+            "strokeSharpness": "sharp",
+            "seed": Math.floor(Math.random() * 1000000),
+            "updated": Date.now(),
+            "link": null,
+            "locked": false,
+            "baseline": 18,
+            "textAlign": "left",
+            "verticalAlign": "top",
+            "containerId": null,
+            "originalText": "Loaded from organisewise.me!"
+          }
+        ]
+      },
+      "note_id": null,
+      "user_id": 13
+    }
+  };
+
   const server = http.createServer(async (req, res) => {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     
     if (req.method === 'OPTIONS') {
@@ -70,58 +120,97 @@ const createCORSProxy = () => {
 
     const url = new URL(req.url, `http://${req.headers.host}`);
     
+    // Handle organisewise API format: /proxy/organisewise/:documentId
+    const orgMatch = url.pathname.match(/^\/proxy\/organisewise\/(.+)$/);
+    
+    if (orgMatch) {
+      const documentId = orgMatch[1];
+      
+      if (req.method === 'GET') {
+        // Load existing content
+        try {
+          console.log(`📥 GET request for document: ${documentId}`);
+          
+          const content = storedContent[documentId];
+          if (!content) {
+            res.writeHead(404);
+            res.end(JSON.stringify({ error: 'Document not found' }));
+            return;
+          }
+
+          res.setHeader('Content-Type', 'application/json');
+          res.writeHead(200);
+          res.end(JSON.stringify(content));
+        } catch (error) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: 'Failed to load document' }));
+        }
+        return;
+      }
+      
+      if (req.method === 'PUT') {
+        // Save content
+        let body = '';
+        req.on('data', chunk => {
+          body += chunk.toString();
+        });
+        
+        req.on('end', () => {
+          try {
+            console.log(`💾 PUT request for document: ${documentId}`);
+            console.log('📄 Request body length:', body.length, 'bytes');
+            
+            const requestData = JSON.parse(body);
+            console.log('📋 Received data structure:', {
+              hasContent: !!requestData.content,
+              hasElements: !!requestData.content?.elements,
+              hasAppState: !!requestData.content?.appState,
+              elementsCount: requestData.content?.elements?.length || 0,
+              uniqueId: requestData.unique_id,
+              userId: requestData.user_id
+            });
+            
+            // Store the content
+            storedContent[documentId] = {
+              id: storedContent[documentId]?.id || Math.floor(Math.random() * 1000),
+              unique_id: documentId,
+              content: requestData.content,
+              note_id: requestData.note_id || null,
+              user_id: requestData.user_id || storedContent[documentId]?.user_id || 13,
+              updated_at: new Date().toISOString()
+            };
+            
+            console.log(`✅ Successfully saved document ${documentId}`);
+            
+            // Return success response
+            res.setHeader('Content-Type', 'application/json');
+            res.writeHead(200);
+            res.end(JSON.stringify({
+              success: true,
+              message: 'Document saved successfully',
+              document_id: documentId,
+              timestamp: new Date().toISOString()
+            }));
+            
+          } catch (error) {
+            console.error('❌ Error saving document:', error.message);
+            res.writeHead(400);
+            res.end(JSON.stringify({ 
+              error: 'Invalid JSON or save failed',
+              details: error.message 
+            }));
+          }
+        });
+        return;
+      }
+    }
+    
+    // Legacy proxy endpoint (backwards compatibility)
     if (url.pathname === '/proxy/organisewise') {
       try {
-        // In a real implementation, you'd use a proper HTTP client
-        console.log('🔄 Proxying request to organisewise.me API...');
+        console.log('🔄 Legacy proxy request...');
         
-        // For demonstration, return a mock response in the correct format
-        const mockResponse = {
-          "id": 141,
-          "unique_id": "e8ff97",
-          "content": {
-            "appState": {
-              "viewBackgroundColor": "#ffffff",
-              "currentItemStrokeColor": "#000000",
-              "zoom": { "value": 1 }
-            },
-            "elements": [
-              {
-                "type": "text",
-                "id": "demo-text",
-                "x": 100,
-                "y": 100,
-                "width": 200,
-                "height": 25,
-                "text": "Loaded from organisewise.me!",
-                "fontSize": 20,
-                "fontFamily": 1,
-                "strokeColor": "#000000",
-                "backgroundColor": "transparent",
-                "fillStyle": "hachure",
-                "strokeWidth": 1,
-                "roughness": 1,
-                "opacity": 100,
-                "version": 1,
-                "versionNonce": Date.now(),
-                "isDeleted": false,
-                "groupIds": [],
-                "strokeSharpness": "sharp",
-                "seed": Math.floor(Math.random() * 1000000),
-                "updated": Date.now(),
-                "link": null,
-                "locked": false,
-                "baseline": 18,
-                "textAlign": "left",
-                "verticalAlign": "top",
-                "containerId": null,
-                "originalText": "Loaded from organisewise.me!"
-              }
-            ]
-          },
-          "note_id": null,
-          "user_id": 13
-        };
+        const mockResponse = storedContent['e8ff97'];
 
         res.setHeader('Content-Type', 'application/json');
         res.writeHead(200);
@@ -141,8 +230,15 @@ const createCORSProxy = () => {
   server.listen(PORT, () => {
     console.log(`🔀 CORS Proxy server running on http://localhost:${PORT}`);
     console.log('');
-    console.log('🧪 Test URL with proxy:');
-    console.log(`?apiUrl=http://localhost:${PORT}/proxy/organisewise`);
+    console.log('🧪 Available endpoints:');
+    console.log(`  GET  http://localhost:${PORT}/proxy/organisewise/e8ff97 - Load document`);
+    console.log(`  PUT  http://localhost:${PORT}/proxy/organisewise/e8ff97 - Save document`);
+    console.log(`  GET  http://localhost:${PORT}/proxy/organisewise/YOUR_ID - Load your document`);
+    console.log(`  PUT  http://localhost:${PORT}/proxy/organisewise/YOUR_ID - Save your document`);
+    console.log('');
+    console.log('🔗 Test URLs for Excalidraw:');
+    console.log(`  Load: ?apiUrl=http://localhost:${PORT}/proxy/organisewise/e8ff97`);
+    console.log(`  Save: Use the ApiSaver component with base URL: http://localhost:${PORT}/proxy/organisewise`);
     console.log('');
     console.log('Press Ctrl+C to stop');
   });
