@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { saveSceneToAPI, buildOrganisewiseAPIUrl } from '../data';
+import { saveSceneToAPI } from '../data';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 
 interface ApiSaverProps {
@@ -11,7 +11,6 @@ interface ApiSaverProps {
  */
 export const ApiSaver: React.FC<ApiSaverProps> = ({ excalidrawAPI }) => {
   const [documentId, setDocumentId] = useState('');
-  const [baseUrl, setBaseUrl] = useState('https://prod.backend.organisewise.me');
   const [userId, setUserId] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [lastSaveStatus, setLastSaveStatus] = useState<{
@@ -38,12 +37,9 @@ export const ApiSaver: React.FC<ApiSaverProps> = ({ excalidrawAPI }) => {
       const appState = excalidrawAPI.getAppState();
       const files = excalidrawAPI.getFiles();
       
-      // Build the API URL
-      const apiUrl = buildOrganisewiseAPIUrl(baseUrl, documentId.trim());
-      
-      const result = await saveSceneToAPI(apiUrl, elements, appState, files, {
+      // Use the new simplified API
+      const result = await saveSceneToAPI(documentId.trim(), elements, appState, files, {
         method: 'PUT',
-        documentId: documentId.trim(),
         userId: userId ? parseInt(userId, 10) : undefined,
         headers: {
           'Content-Type': 'application/json',
@@ -91,29 +87,13 @@ export const ApiSaver: React.FC<ApiSaverProps> = ({ excalidrawAPI }) => {
       fontFamily: 'system-ui, -apple-system, sans-serif'
     }}>
       <div style={{ marginBottom: '10px', fontSize: '14px', fontWeight: 'bold' }}>
-        💾 Save the Note
+        💾 Save to API
       </div>
       
-      {/* Base URL Input */}
-      <div style={{ marginBottom: '8px' }}>
-        <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', color: '#666' }}>
-          Base URL:
-        </label>
-        <input
-          type="text"
-          placeholder="https://prod.backend.organisewise.me"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          disabled={saving}
-          style={{
-            width: '100%',
-            padding: '6px 10px',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            fontSize: '13px',
-            boxSizing: 'border-box'
-          }}
-        />
+      <div style={{ marginBottom: '8px', fontSize: '12px', color: '#666' }}>
+        Base URL: <code style={{ fontSize: '11px', padding: '2px 4px', backgroundColor: '#e9ecef', borderRadius: '3px' }}>
+          {import.meta.env.VITE_APP_ORGANISEWISE_API_BASE_URL || 'https://prod.backend.organisewise.me'}
+        </code>
       </div>
 
       {/* Document ID Input */}
@@ -180,7 +160,7 @@ export const ApiSaver: React.FC<ApiSaverProps> = ({ excalidrawAPI }) => {
             transition: 'background-color 0.2s'
           }}
         >
-          {saving ? '⏳ Saving...' : '💾 Save to API'}
+          {saving ? '⏳ Saving...' : '💾 Save the Note'}
         </button>
       </div>
 
@@ -201,22 +181,6 @@ export const ApiSaver: React.FC<ApiSaverProps> = ({ excalidrawAPI }) => {
           <div style={{ fontSize: '11px', opacity: 0.8 }}>
             {lastSaveStatus.timestamp.toLocaleTimeString()}
           </div>
-        </div>
-      )}
-
-      {/* API URL Preview */}
-      {documentId.trim() && (
-        <div style={{ 
-          marginTop: '8px', 
-          fontSize: '11px', 
-          color: '#6c757d',
-          background: '#fff',
-          padding: '4px 6px',
-          border: '1px solid #dee2e6',
-          borderRadius: '3px',
-          wordBreak: 'break-all'
-        }}>
-          <strong>API URL:</strong> {buildOrganisewiseAPIUrl(baseUrl, documentId.trim())}
         </div>
       )}
 

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaboration + Document ID Test</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .url-example {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 10px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 16px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .info {
+            background: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <h1>🤝 Collaboration + Document ID Test</h1>
+    
+    <div class="section info">
+        <h3>📋 Test Scenarios</h3>
+        <p>Click the links below to test different combinations of collaboration mode and document ID:</p>
+    </div>
+
+    <div class="section">
+        <h3>1. Load Document + Start Collaboration</h3>
+        <p>This will load document "test123" and immediately start collaboration mode:</p>
+        <div class="url-example">
+            http://localhost:3000/?documentId=test123&collaborationMode=true
+        </div>
+        <a href="http://localhost:3000/?documentId=test123&collaborationMode=true" class="button" target="_blank">
+            Test Document + Collaboration
+        </a>
+    </div>
+
+    <div class="section">
+        <h3>2. Start Collaboration Only</h3>
+        <p>This will start collaboration mode without a preset document ID:</p>
+        <div class="url-example">
+            http://localhost:3000/?collaborationMode=true
+        </div>
+        <a href="http://localhost:3000/?collaborationMode=true" class="button" target="_blank">
+            Test Collaboration Only
+        </a>
+    </div>
+
+    <div class="section">
+        <h3>3. Load Document Only</h3>
+        <p>This will load document "test456" without collaboration:</p>
+        <div class="url-example">
+            http://localhost:3000/?documentId=test456
+        </div>
+        <a href="http://localhost:3000/?documentId=test456" class="button" target="_blank">
+            Test Document Only
+        </a>
+    </div>
+
+    <div class="section success">
+        <h3>✅ Expected Behavior</h3>
+        <ol>
+            <li><strong>Document + Collaboration:</strong> URL should update to include room hash while preserving documentId</li>
+            <li><strong>Save Button:</strong> Should automatically use the preserved document ID</li>
+            <li><strong>Shared Links:</strong> When you share the collaboration URL, others should see the same document ID</li>
+            <li><strong>Console Logs:</strong> Check browser console for confirmation messages</li>
+        </ol>
+    </div>
+
+    <div class="section">
+        <h3>🧪 Testing Steps</h3>
+        <ol>
+            <li>Click "Test Document + Collaboration" link</li>
+            <li>Notice URL changes to include room hash but keeps documentId</li>
+            <li>Check console for "🤝 Collaboration mode activated with document ID" message</li>
+            <li>Look for save button showing document ID "test123"</li>
+            <li>Copy the updated URL and open in another browser/tab to simulate sharing</li>
+            <li>Verify both sessions use the same document ID for saving</li>
+        </ol>
+    </div>
+
+    <div class="section">
+        <h3>🔍 What to Look For</h3>
+        <ul>
+            <li><code>✅ Document ID stored: test123</code> in console</li>
+            <li><code>🤝 Collaboration mode activated with document ID</code> in console</li>
+            <li><code>🔄 Syncing loaded document data to collaboration room</code> if elements were loaded</li>
+            <li>URL preserves <code>?documentId=test123</code> parameter</li>
+            <li>Save button uses "test123" automatically</li>
+            <li>Multiple browsers/tabs save to same document ID</li>
+            <li><strong>Document content loaded from API (if document exists on server)</strong></li>
+        </ul>
+    </div>
+
+    <script>
+        // Add some helper functions for testing
+        window.testCollaboration = function() {
+            console.log('Current URL:', window.location.href);
+            console.log('Document ID in window:', window.currentDocumentId);
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlDocumentId = urlParams.get('documentId') || urlParams.get('document_id') || urlParams.get('id');
+            console.log('Document ID in URL:', urlDocumentId);
+            
+            if (window.excalidrawAPI) {
+                console.log('Excalidraw API available');
+                const elements = window.excalidrawAPI.getSceneElements();
+                console.log('Current elements in scene:', elements.length);
+                if (elements.length > 0) {
+                    console.log('✅ Scene has content - document was loaded successfully');
+                } else {
+                    console.log('⚠️ Scene is empty - document might not exist or failed to load');
+                }
+            } else {
+                console.log('Excalidraw API not yet available');
+            }
+        };
+
+        // Enhanced testing with periodic checks
+        window.startPeriodicTest = function() {
+            let checkCount = 0;
+            const maxChecks = 10;
+            
+            const interval = setInterval(() => {
+                checkCount++;
+                console.log(`\n--- Test Check ${checkCount}/${maxChecks} ---`);
+                window.testCollaboration();
+                
+                if (checkCount >= maxChecks) {
+                    clearInterval(interval);
+                    console.log('🏁 Test monitoring complete');
+                }
+            }, 2000);
+        };
+
+        // Run test when page loads
+        setTimeout(() => {
+            if (window.location.search.includes('documentId') || window.location.search.includes('collaborationMode')) {
+                console.log('🧪 Test page detected parameters in URL');
+                window.testCollaboration();
+                
+                // Start periodic monitoring
+                console.log('🔄 Starting periodic monitoring...');
+                window.startPeriodicTest();
+            }
+        }, 2000);
+    </script>
+</body>
+</html> 

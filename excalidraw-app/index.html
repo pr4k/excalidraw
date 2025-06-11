@@ -262,7 +262,7 @@
               
               // Create save button
               const saveButton = document.createElement('button');
-              saveButton.innerHTML = '💾 Save to API';
+              saveButton.innerHTML = '💾 Save the Note';
               saveButton.id = 'save-to-api-btn';
               saveButton.style.cssText = `
                 position: fixed;
@@ -387,7 +387,20 @@
               
               // Save functionality
               saveButton.onclick = async () => {
-                const documentId = prompt('Enter Document ID to save:', 'e8ff97');
+                // Check multiple sources for document ID
+                let documentId = window.currentDocumentId;
+                
+                // If not found in window, check URL parameters (for collaboration mode)
+                if (!documentId) {
+                  const urlParams = new URLSearchParams(window.location.search);
+                  documentId = urlParams.get('documentId') || urlParams.get('document_id') || urlParams.get('id');
+                }
+                
+                // If still not found, prompt user
+                if (!documentId) {
+                  documentId = prompt('Enter Document ID to save:', 'e8ff97');
+                }
+                
                 if (!documentId || !documentId.trim()) return;
                 
                 try {
@@ -418,13 +431,15 @@
                   
                   // Log what we're sending
                   console.log('Saving scene with:', {
+                    documentId: documentId.trim(),
                     elements: elements.length + ' elements',
                     appState: Object.keys(appState).length + ' appState keys',
                     files: Object.keys(files).length + ' files'
                   });
                   
-                  // Save to organisewise.me API
-                  const apiUrl = `https://prod.backend.organisewise.me/draw/excalidraw/${documentId.trim()}`;
+                  // Save using the new simplified API (document ID only)
+                  const baseUrl = 'https://prod.backend.organisewise.me'; // This should match your ENV var
+                  const apiUrl = `${baseUrl}/draw/excalidraw/${documentId.trim()}`;
                   
                   const payload = {
                     content: { elements, appState, files },
@@ -445,6 +460,12 @@
                     const result = await response.json();
                     showToast(`✅ Saved successfully to ${documentId}!`, 'success');
                     console.log('Save successful:', result);
+                    
+                    // Update the stored document ID if it was manually entered
+                    if (!window.currentDocumentId) {
+                      window.currentDocumentId = documentId.trim();
+                      console.log('✅ Document ID updated:', documentId.trim());
+                    }
                   } else {
                     const errorText = await response.text();
                     throw new Error(`${response.status} ${response.statusText}: ${errorText}`);

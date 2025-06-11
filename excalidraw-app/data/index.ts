@@ -277,13 +277,13 @@ export const loadScene = async (
 };
 
 /**
- * Load Excalidraw scene data from a custom API endpoint
- * @param apiUrl - The API endpoint URL to fetch scene data from
+ * Load Excalidraw scene data from organisewise.me API using document ID
+ * @param documentId - The document ID (e.g., 'e8ff97')
  * @param options - Optional configuration for the API request
  * @returns Promise<ImportedDataState> - The scene data compatible with Excalidraw
  */
 export const loadSceneFromAPI = async (
-  apiUrl: string,
+  documentId: string,
   options?: {
     method?: 'GET' | 'POST';
     headers?: Record<string, string>;
@@ -292,6 +292,10 @@ export const loadSceneFromAPI = async (
   }
 ): Promise<ImportedDataState> => {
   const { method = 'GET', headers = {}, body, timeout = 10000 } = options || {};
+  
+  // Get base URL from environment variable or use default
+  const baseUrl = (import.meta.env as any).VITE_APP_ORGANISEWISE_API_BASE_URL || 'https://prod.backend.organisewise.me';
+  const apiUrl = `${baseUrl}/draw/excalidraw/${documentId}`;
   
   try {
     const controller = new AbortController();
@@ -373,26 +377,26 @@ export const loadSceneFromAPI = async (
 };
 
 /**
- * Enhanced scene loader that supports API loading via URL parameters
+ * Enhanced scene loader that supports API loading via URL parameters with document ID
  * @param id - Backend scene ID (existing functionality)
  * @param privateKey - Decryption key for backend scenes (existing functionality) 
  * @param localDataState - Local storage data for fallback
- * @param apiUrl - Optional API URL to load scene from
+ * @param documentId - Optional document ID to load scene from organisewise API
  * @param apiOptions - Optional configuration for API requests
  */
 export const loadSceneEnhanced = async (
   id: string | null,
   privateKey: string | null,
   localDataState: ImportedDataState | undefined | null,
-  apiUrl?: string,
+  documentId?: string,
   apiOptions?: Parameters<typeof loadSceneFromAPI>[1]
 ) => {
   let data;
   
-  // Priority 1: Load from API if URL is provided
-  if (apiUrl) {
+  // Priority 1: Load from API if document ID is provided
+  if (documentId) {
     try {
-      const apiData = await loadSceneFromAPI(apiUrl, apiOptions);
+      const apiData = await loadSceneFromAPI(documentId, apiOptions);
       data = restore(
         apiData,
         localDataState?.appState,
@@ -429,82 +433,17 @@ export const loadSceneEnhanced = async (
   };
 };
 
-type ExportToBackendResult =
-  | { url: null; errorMessage: string }
-  | { url: string; errorMessage: null };
-
-export const exportToBackend = async (
-  elements: readonly ExcalidrawElement[],
-  appState: Partial<AppState>,
-  files: BinaryFiles,
-): Promise<ExportToBackendResult> => {
-  const encryptionKey = await generateEncryptionKey("string");
-
-  const payload = await compressData(
-    new TextEncoder().encode(
-      serializeAsJSON(elements, appState, files, "database"),
-    ),
-    { encryptionKey },
-  );
-
-  try {
-    const filesMap = new Map<FileId, BinaryFileData>();
-    for (const element of elements) {
-      if (isInitializedImageElement(element) && files[element.fileId]) {
-        filesMap.set(element.fileId, files[element.fileId]);
-      }
-    }
-
-    const filesToUpload = await encodeFilesForUpload({
-      files: filesMap,
-      encryptionKey,
-      maxBytes: FILE_UPLOAD_MAX_BYTES,
-    });
-
-    const response = await fetch(BACKEND_V2_POST, {
-      method: "POST",
-      body: payload.buffer,
-    });
-    const json = await response.json();
-    if (json.id) {
-      const url = new URL(window.location.href);
-      // We need to store the key (and less importantly the id) as hash instead
-      // of queryParam in order to never send it to the server
-      url.hash = `json=${json.id},${encryptionKey}`;
-      const urlString = url.toString();
-
-      await saveFilesToFirebase({
-        prefix: `/files/shareLinks/${json.id}`,
-        files: filesToUpload,
-      });
-
-      return { url: urlString, errorMessage: null };
-    } else if (json.error_class === "RequestTooLargeError") {
-      return {
-        url: null,
-        errorMessage: t("alerts.couldNotCreateShareableLinkTooBig"),
-      };
-    }
-
-    return { url: null, errorMessage: t("alerts.couldNotCreateShareableLink") };
-  } catch (error: any) {
-    console.error(error);
-
-    return { url: null, errorMessage: t("alerts.couldNotCreateShareableLink") };
-  }
-};
-
 /**
- * Save Excalidraw scene data to a custom API endpoint using PUT request
- * @param apiUrl - The API endpoint URL to save scene data to
+ * Save Excalidraw scene data to organisewise.me API using document ID
+ * @param documentId - The document ID to save to
  * @param elements - Excalidraw elements to save
  * @param appState - Excalidraw app state to save
  * @param files - Excalidraw files to save
  * @param options - Optional configuration for the API request
- * @returns Promise<boolean> - Success status
+ * @returns Promise<{success: boolean; error?: string}> - Success status
  */
 export const saveSceneToAPI = async (
-  apiUrl: string,
+  documentId: string,
   elements: readonly ExcalidrawElement[],
   appState: Partial<AppState>,
   files: BinaryFiles = {},
@@ -512,7 +451,6 @@ export const saveSceneToAPI = async (
     method?: 'PUT' | 'POST';
     headers?: Record<string, string>;
     timeout?: number;
-    documentId?: string;
     userId?: number;
   }
 ): Promise<{ success: boolean; error?: string }> => {
@@ -520,9 +458,12 @@ export const saveSceneToAPI = async (
     method = 'PUT', 
     headers = {}, 
     timeout = 10000,
-    documentId,
     userId 
   } = options || {};
+  
+  // Get base URL from environment variable or use default
+  const baseUrl = (import.meta.env as any).VITE_APP_ORGANISEWISE_API_BASE_URL || 'https://prod.backend.organisewise.me';
+  const apiUrl = `${baseUrl}/draw/excalidraw/${documentId}`;
   
   try {
     const controller = new AbortController();
@@ -589,10 +530,75 @@ export const saveSceneToAPI = async (
 
 /**
  * Helper function to construct API URL for organisewise.me format
- * @param baseUrl - Base URL (e.g., 'https://prod.backend.organisewise.me')
  * @param documentId - Document ID to save to
  * @returns Complete API URL
+ * @deprecated Use saveSceneToAPI or loadSceneFromAPI directly with document ID
  */
 export const buildOrganisewiseAPIUrl = (baseUrl: string, documentId: string): string => {
   return `${baseUrl}/draw/excalidraw/${documentId}`;
+};
+
+type ExportToBackendResult =
+  | { url: null; errorMessage: string }
+  | { url: string; errorMessage: null };
+
+export const exportToBackend = async (
+  elements: readonly ExcalidrawElement[],
+  appState: Partial<AppState>,
+  files: BinaryFiles,
+): Promise<ExportToBackendResult> => {
+  const encryptionKey = await generateEncryptionKey("string");
+
+  const payload = await compressData(
+    new TextEncoder().encode(
+      serializeAsJSON(elements, appState, files, "database"),
+    ),
+    { encryptionKey },
+  );
+
+  try {
+    const filesMap = new Map<FileId, BinaryFileData>();
+    for (const element of elements) {
+      if (isInitializedImageElement(element) && files[element.fileId]) {
+        filesMap.set(element.fileId, files[element.fileId]);
+      }
+    }
+
+    const filesToUpload = await encodeFilesForUpload({
+      files: filesMap,
+      encryptionKey,
+      maxBytes: FILE_UPLOAD_MAX_BYTES,
+    });
+
+    const response = await fetch(BACKEND_V2_POST, {
+      method: "POST",
+      body: payload.buffer as ArrayBuffer,
+    });
+    const json = await response.json();
+    if (json.id) {
+      const url = new URL(window.location.href);
+      // We need to store the key (and less importantly the id) as hash instead
+      // of queryParam in order to never send it to the server
+      url.hash = `json=${json.id},${encryptionKey}`;
+      const urlString = url.toString();
+
+      await saveFilesToFirebase({
+        prefix: `/files/shareLinks/${json.id}`,
+        files: filesToUpload,
+      });
+
+      return { url: urlString, errorMessage: null };
+    } else if (json.error_class === "RequestTooLargeError") {
+      return {
+        url: null,
+        errorMessage: t("alerts.couldNotCreateShareableLinkTooBig"),
+      };
+    }
+
+    return { url: null, errorMessage: t("alerts.couldNotCreateShareableLink") };
+  } catch (error: any) {
+    console.error(error);
+
+    return { url: null, errorMessage: t("alerts.couldNotCreateShareableLink") };
+  }
 };

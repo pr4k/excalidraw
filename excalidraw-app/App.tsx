@@ -110,6 +110,8 @@ import {
   loadSceneEnhanced,
   saveSceneToAPI,
   buildOrganisewiseAPIUrl,
+  generateCollaborationLinkData,
+  getCollaborationLink,
 } from "./data";
 
 import { updateStaleImageStatuses } from "./data/FileManager";
@@ -209,7 +211,7 @@ const initializeScene = async (opts: {
   collabAPI: CollabAPI | null;
   excalidrawAPI: ExcalidrawImperativeAPI;
 }): Promise<
-  { scene: ExcalidrawInitialDataState | null } & (
+  { scene: ExcalidrawInitialDataState | null; documentId?: string } & (
     | { isExternalScene: true; id: string; key: string }
     | { isExternalScene: false; id?: null; key?: null }
   )
@@ -221,23 +223,30 @@ const initializeScene = async (opts: {
   );
   const externalUrlMatch = window.location.hash.match(/^#url=(.*)$/);
   
-  // Check for API loading parameters
-  const apiUrl = searchParams.get("apiUrl") || searchParams.get("api_url");
+  // Check for document ID parameter (new simplified format)
+  const documentId = searchParams.get("documentId") || searchParams.get("document_id") || searchParams.get("id") || undefined;
   const apiMethod = searchParams.get("apiMethod") || searchParams.get("api_method") || 'GET';
   const apiHeaders = searchParams.get("apiHeaders") || searchParams.get("api_headers");
   const apiBody = searchParams.get("apiBody") || searchParams.get("api_body");
   const apiTimeout = searchParams.get("apiTimeout") || searchParams.get("api_timeout");
 
+  // Check for collaboration mode parameter
+  const collaborationMode = searchParams.get("collaborationMode") === "true" || searchParams.get("collaboration_mode") === "true";
+
   const localDataState = importFromLocalStorage();
 
+  // Get initial collaboration link data
+  let roomLinkData = getCollaborationLinkData(window.location.href);
+
+  // Load scene data first (including from API if documentId is provided)
   let scene: RestoredDataState & {
     scrollToContent?: boolean;
   } = await loadSceneEnhanced(
     null, 
     null, 
     localDataState,
-    apiUrl || undefined,
-    apiUrl ? {
+    documentId,
+    documentId ? {
       method: apiMethod.toUpperCase() as 'GET' | 'POST',
       headers: apiHeaders ? JSON.parse(decodeURIComponent(apiHeaders)) : undefined,
       body: apiBody ? decodeURIComponent(apiBody) : undefined,
@@ -245,8 +254,40 @@ const initializeScene = async (opts: {
     } : undefined
   );
 
-  let roomLinkData = getCollaborationLinkData(window.location.href);
-  const isExternalScene = !!(id || jsonBackendMatch || roomLinkData || apiUrl);
+  // If collaboration mode is requested, generate collaboration data and update URL
+  if (collaborationMode && !roomLinkData && opts.collabAPI) {
+    try {
+      const newCollabData = await generateCollaborationLinkData();
+      const collabLink = getCollaborationLink(newCollabData);
+      
+      // Preserve document ID and other parameters when updating URL for collaboration
+      const newUrl = new URL(collabLink);
+      if (documentId) {
+        newUrl.searchParams.set('documentId', documentId);
+      }
+      if (collaborationMode) {
+        newUrl.searchParams.set('collaborationMode', 'true');
+      }
+      
+      // Update the URL to include both collaboration room data and preserved parameters
+      const finalUrl = newUrl.toString();
+      window.history.replaceState({}, APP_NAME, finalUrl);
+      
+      // Parse the new collaboration data from the updated URL
+      roomLinkData = getCollaborationLinkData(finalUrl);
+      
+      console.log('🤝 Collaboration mode activated with document ID:', { 
+        roomId: newCollabData.roomId, 
+        documentId: documentId || 'none',
+        url: finalUrl,
+        elementsLoaded: scene.elements?.length || 0
+      });
+    } catch (error) {
+      console.error('Failed to initialize collaboration mode:', error);
+    }
+  }
+
+  const isExternalScene = !!(id || jsonBackendMatch || roomLinkData || documentId);
   if (isExternalScene) {
     if (
       // don't prompt if scene is empty
@@ -254,11 +295,11 @@ const initializeScene = async (opts: {
       // don't prompt for collab scenes because we don't override local storage
       roomLinkData ||
       // don't prompt for API scenes (they're meant to be loaded directly)
-      apiUrl ||
+      documentId ||
       // otherwise, prompt whether user wants to override current scene
       (await openConfirmModal(shareableLinkConfirmDialog))
     ) {
-      if (jsonBackendMatch && !apiUrl) {
+      if (jsonBackendMatch && !documentId) {
         scene = await loadScene(
           jsonBackendMatch[1],
           jsonBackendMatch[2],
@@ -266,7 +307,7 @@ const initializeScene = async (opts: {
         );
       }
       scene.scrollToContent = true;
-      if (!roomLinkData && !apiUrl) {
+      if (!roomLinkData && !documentId) {
         window.history.replaceState({}, APP_NAME, window.location.origin);
       }
     } else {
@@ -297,7 +338,7 @@ const initializeScene = async (opts: {
         !scene.elements.length ||
         (await openConfirmModal(shareableLinkConfirmDialog))
       ) {
-        return { scene: data, isExternalScene };
+        return { scene: data, isExternalScene, documentId };
       }
     } catch (error: any) {
       return {
@@ -307,6 +348,7 @@ const initializeScene = async (opts: {
           },
         },
         isExternalScene,
+        documentId,
       };
     }
   }
@@ -314,19 +356,30 @@ const initializeScene = async (opts: {
   if (roomLinkData && opts.collabAPI) {
     const { excalidrawAPI } = opts;
 
-    const scene = await opts.collabAPI.startCollaboration(roomLinkData);
+    // If we have loaded scene data from API, use it as initial state for collaboration
+    const initialSceneForCollab = scene.elements?.length > 0 ? scene : null;
+    
+    const collabScene = await opts.collabAPI.startCollaboration(roomLinkData);
 
     return {
       // when collaborating, the state may have already been updated at this
       // point (we may have received updates from other clients), so reconcile
       // elements and appState with existing state
       scene: {
-        ...scene,
+        ...collabScene,
+        // Prioritize loaded scene data if we have it and collaboration scene is empty
+        elements: (collabScene?.elements?.length || 0) > 0 
+          ? reconcileElements(
+              collabScene?.elements || [],
+              excalidrawAPI.getSceneElementsIncludingDeleted() as RemoteExcalidrawElement[],
+              excalidrawAPI.getAppState(),
+            )
+          : initialSceneForCollab?.elements || collabScene?.elements || [],
         appState: {
           ...restoreAppState(
             {
-              ...scene?.appState,
-              theme: localDataState?.appState?.theme || scene?.appState?.theme,
+              ...(initialSceneForCollab?.appState || collabScene?.appState),
+              theme: localDataState?.appState?.theme || collabScene?.appState?.theme || initialSceneForCollab?.appState?.theme,
             },
             excalidrawAPI.getAppState(),
           ),
@@ -334,15 +387,11 @@ const initializeScene = async (opts: {
           // go through App.initializeScene() that resets this flag
           isLoading: false,
         },
-        elements: reconcileElements(
-          scene?.elements || [],
-          excalidrawAPI.getSceneElementsIncludingDeleted() as RemoteExcalidrawElement[],
-          excalidrawAPI.getAppState(),
-        ),
       },
       isExternalScene: true,
       id: roomLinkData.roomId,
       key: roomLinkData.roomKey,
+      documentId,
     };
   } else if (scene) {
     return isExternalScene && jsonBackendMatch
@@ -351,14 +400,16 @@ const initializeScene = async (opts: {
           isExternalScene,
           id: jsonBackendMatch[1],
           key: jsonBackendMatch[2],
+          documentId,
         }
-      : { scene, isExternalScene: false };
+      : { scene, isExternalScene: false, documentId };
   }
-  return { scene: null, isExternalScene: false };
+  return { scene: null, isExternalScene: false, documentId };
 };
 
 const ExcalidrawWrapper = () => {
   const [errorMessage, setErrorMessage] = useState("");
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
   const isCollabDisabled = isRunningInIframe();
 
   const { editorTheme, appTheme, setAppTheme } = useHandleAppTheme();
@@ -502,6 +553,47 @@ const ExcalidrawWrapper = () => {
 
     initializeScene({ collabAPI, excalidrawAPI }).then(async (data) => {
       loadImages(data, /* isInitialLoad */ true);
+      
+      // Store document ID in state and expose to window
+      if (data.documentId) {
+        setCurrentDocumentId(data.documentId);
+        (window as any).currentDocumentId = data.documentId;
+        console.log('✅ Document ID stored:', data.documentId);
+        
+        // If we're in collaboration mode and have loaded scene data, sync it to the room
+        if (collabAPI?.isCollaborating() && data.scene?.elements && (data.scene.elements.length || 0) > 0) {
+          console.log('🔄 Syncing loaded document data to collaboration room:', data.scene.elements.length, 'elements');
+          // Give the collaboration a moment to fully initialize
+          setTimeout(() => {
+            if (excalidrawAPI && data.scene && data.scene.elements) {
+              excalidrawAPI.updateScene({
+                elements: data.scene.elements,
+                appState: { 
+                  ...excalidrawAPI.getAppState(),
+                  ...data.scene.appState 
+                },
+                captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+              });
+              // Add files separately if the API supports it
+              if (data.scene.files && Object.keys(data.scene.files).length > 0) {
+                excalidrawAPI.addFiles(Object.values(data.scene.files));
+              }
+              // Sync elements to collaboration room with proper type casting
+              collabAPI.syncElements(data.scene.elements as any);
+            }
+          }, 1000);
+        }
+      } else {
+        // Also check if documentId is in URL parameters (e.g., when joining collaboration)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlDocumentId = urlParams.get("documentId") || urlParams.get("document_id") || urlParams.get("id");
+        if (urlDocumentId) {
+          setCurrentDocumentId(urlDocumentId);
+          (window as any).currentDocumentId = urlDocumentId;
+          console.log('✅ Document ID extracted from collaboration URL:', urlDocumentId);
+        }
+      }
+      
       initialStatePromiseRef.current.promise.resolve(data.scene);
     });
 

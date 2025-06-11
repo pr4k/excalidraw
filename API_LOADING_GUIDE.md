@@ -1,101 +1,78 @@
-# API Loading for Preset Excalidraw Content
+# Excalidraw API Loading Guide
 
-This guide explains how to load preset Excalidraw content from API endpoints using the new API loading functionality.
+## Updated: Simplified Document ID Approach
 
-## Overview
+The API loading functionality has been updated to use a simplified approach that only requires a **document ID** instead of a full API URL.
 
-The enhanced Excalidraw application now supports loading scene data from custom API endpoints, allowing you to:
+### Environment Configuration
 
-- Load predefined drawings from your backend
-- Create templates and starter content
-- Integrate with content management systems
-- Build dynamic drawing experiences
+Set the base URL in your environment variables:
 
-## Features
-
-### 1. URL Parameter Loading
-
-Load content automatically using URL parameters:
-
-```
-https://your-excalidraw-app.com/?apiUrl=https://api.example.com/drawings/template1
+```bash
+# .env file or environment variables
+VITE_APP_ORGANISEWISE_API_BASE_URL=https://prod.backend.organisewise.me
 ```
 
-#### Supported URL Parameters
+If not set, it defaults to `https://prod.backend.organisewise.me`.
 
-- `apiUrl` or `api_url`: The API endpoint URL (required)
-- `apiMethod` or `api_method`: HTTP method (GET/POST, default: GET)
-- `apiHeaders` or `api_headers`: JSON-encoded headers (URL-encoded)
-- `apiBody` or `api_body`: Request body for POST requests (URL-encoded)
-- `apiTimeout` or `api_timeout`: Request timeout in milliseconds (default: 10000)
+### URL Parameters (New Simplified Format)
 
-#### Examples
+#### Loading a Document
+- `documentId` or `document_id` - The document ID (e.g., `e8ff97`)
 
-**Simple GET request:**
+#### Collaboration Mode
+- `collaborationMode` or `collaboration_mode` - Set to `true` to automatically start collaboration mode
+
+**Example URLs:**
 ```
-?apiUrl=https://api.example.com/drawings/123
-```
+# Load document with ID 'e8ff97'
+https://your-excalidraw.com/?documentId=e8ff97
 
-**POST request with headers:**
-```
-?apiUrl=https://api.example.com/drawings&apiMethod=POST&apiHeaders=%7B%22Authorization%22%3A%22Bearer%20token%22%7D&apiBody=%7B%22id%22%3A123%7D
-```
+# Alternative parameter name
+https://your-excalidraw.com/?document_id=abc123
 
-### 2. Programmatic Loading
+# Start in collaboration mode
+https://your-excalidraw.com/?collaborationMode=true
 
-Use the `loadSceneFromAPI` function directly in your code:
+# Load document and start collaboration
+https://your-excalidraw.com/?documentId=e8ff97&collaborationMode=true
 
-```typescript
-import { loadSceneFromAPI } from './data';
+# Start collaboration first, then manually set document ID for saving
+https://your-excalidraw.com/?collaborationMode=true
 
-// Simple GET request
-const sceneData = await loadSceneFromAPI('https://api.example.com/drawings/123');
+# Join existing collaboration room (preserves document ID)
+https://your-excalidraw.com/?documentId=e8ff97&collaborationMode=true#room=abc123,def456
 
-// With options
-const sceneData = await loadSceneFromAPI('https://api.example.com/drawings', {
-  method: 'POST',
-  headers: {
-    'Authorization': 'Bearer your-token',
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({ templateId: 'starter-template' }),
-  timeout: 15000
-});
-
-// Load into Excalidraw
-excalidrawAPI.updateScene({
-  elements: sceneData.elements || [],
-  appState: {
-    ...excalidrawAPI.getAppState(),
-    ...sceneData.appState,
-  },
-});
+# With additional API options
+https://your-excalidraw.com/?documentId=e8ff97&apiMethod=GET&apiTimeout=5000
 ```
 
-### 3. Enhanced Scene Loading
+#### API Options (Optional)
+- `apiMethod` or `api_method` - HTTP method (default: 'GET')
+- `apiHeaders` or `api_headers` - JSON string of headers (URL encoded)
+- `apiBody` or `api_body` - Request body (URL encoded)
+- `apiTimeout` or `api_timeout` - Timeout in milliseconds (default: 10000)
 
-The `loadSceneEnhanced` function provides a unified interface that combines API loading with existing functionality:
+### Document State Management
 
-```typescript
-import { loadSceneEnhanced } from './data';
+When a document is loaded via `documentId`, the system automatically:
+1. Stores the document ID in React state
+2. Exposes it to `window.currentDocumentId` for the save functionality
+3. Uses the stored ID for subsequent save operations
 
-const scene = await loadSceneEnhanced(
-  null, // backend ID
-  null, // private key
-  localDataState, // local storage fallback
-  'https://api.example.com/drawings/123', // API URL
-  { // API options
-    method: 'GET',
-    headers: { 'Authorization': 'Bearer token' }
-  }
-);
-```
+### Save Functionality
 
-### 4. Custom Format
-Any JSON object containing `elements`, `appState`, or `files` properties at the root level.
+The save button will:
+1. First check if there's a stored `documentId` from the URL
+2. If not found, prompt the user to enter a document ID
+3. Save using the simplified API format
 
-### 5. Content Field Format
-```json
+### API Response Format
+
+The system supports multiple response formats:
+
+```javascript
+// Format 1: organisewise.me format (recommended)
 {
   "id": 141,
   "unique_id": "e8ff97",
@@ -104,28 +81,17 @@ Any JSON object containing `elements`, `appState`, or `files` properties at the 
     "appState": {...},
     "files": {...}
   },
-  "note_id": null,
   "user_id": 13
 }
-```
 
-This format is used by APIs like [organisewise.me](https://prod.backend.organisewise.me/draw/excalidraw/e8ff97) where the Excalidraw data is nested under a `content` field.
-
-## API Response Formats
-
-The API loading functionality supports multiple response formats:
-
-### 1. Direct Excalidraw Format
-```json
+// Format 2: Direct Excalidraw format
 {
   "elements": [...],
   "appState": {...},
   "files": {...}
 }
-```
 
-### 2. Nested Scene Format
-```json
+// Format 3: Nested scene format
 {
   "scene": {
     "elements": [...],
@@ -135,202 +101,90 @@ The API loading functionality supports multiple response formats:
 }
 ```
 
-### 3. Wrapped Data Format
-```json
-{
-  "data": {
-    "elements": [...],
-    "appState": {...},
-    "files": {...}
-  }
-}
-```
+### Technical Implementation
 
-### 4. Content Field Format
-```json
-{
-  "id": 141,
-  "unique_id": "e8ff97",
-  "content": {
-    "elements": [...],
-    "appState": {...},
-    "files": {...}
-  },
-  "note_id": null,
-  "user_id": 13
-}
-```
-
-This format is used by APIs like [organisewise.me](https://prod.backend.organisewise.me/draw/excalidraw/e8ff97) where the Excalidraw data is nested under a `content` field.
-
-### 5. Custom Format
-Any JSON object containing `elements`, `appState`, or `files` properties at the root level.
-
-## Error Handling
-
-The API loading includes comprehensive error handling:
-
-- **Network errors**: Connection failures, timeouts
-- **HTTP errors**: 404, 500, etc.
-- **Data validation**: Invalid JSON or missing required fields
-- **Graceful fallback**: Falls back to local storage or default state
-
-## Security Considerations
-
-### CORS
-Ensure your API endpoints have proper CORS headers:
-
-```
-Access-Control-Allow-Origin: https://your-excalidraw-domain.com
-Access-Control-Allow-Methods: GET, POST
-Access-Control-Allow-Headers: Content-Type, Authorization
-```
-
-### Authentication
-Use secure authentication methods:
-
+#### Loading Function
 ```typescript
-const sceneData = await loadSceneFromAPI('https://api.example.com/drawings/123', {
-  headers: {
-    'Authorization': 'Bearer ' + getAccessToken(),
-    'X-API-Key': 'your-api-key'
-  }
+// New simplified function signature
+loadSceneFromAPI(documentId: string, options?: {...})
+
+// Usage
+const scene = await loadSceneFromAPI('e8ff97');
+```
+
+#### Save Function
+```typescript
+// New simplified function signature
+saveSceneToAPI(documentId: string, elements, appState, files, options?: {...})
+
+// Usage
+const result = await saveSceneToAPI('e8ff97', elements, appState, files, {
+  userId: 13
 });
 ```
 
-## Implementation Examples
+### Migration from Previous Version
 
-### 1. Template Gallery
+If you were using the old `apiUrl` parameter format:
 
-```typescript
-const templates = [
-  { id: 'flowchart', name: 'Flowchart Template', url: '/api/templates/flowchart' },
-  { id: 'wireframe', name: 'Wireframe Template', url: '/api/templates/wireframe' },
-  { id: 'diagram', name: 'System Diagram', url: '/api/templates/diagram' }
-];
-
-const loadTemplate = async (templateUrl) => {
-  try {
-    const sceneData = await loadSceneFromAPI(templateUrl);
-    excalidrawAPI.updateScene({
-      elements: sceneData.elements || [],
-      appState: { ...excalidrawAPI.getAppState(), ...sceneData.appState }
-    });
-  } catch (error) {
-    console.error('Failed to load template:', error);
-  }
-};
+**Old format:**
+```
+?apiUrl=https://prod.backend.organisewise.me/draw/excalidraw/e8ff97
 ```
 
-### 2. Collaborative Presets
-
-```typescript
-const loadSharedDrawing = async (drawingId, userToken) => {
-  const sceneData = await loadSceneFromAPI(`/api/shared-drawings/${drawingId}`, {
-    headers: { 'Authorization': `Bearer ${userToken}` }
-  });
-  
-  excalidrawAPI.updateScene({
-    elements: sceneData.elements || [],
-    appState: sceneData.appState || {}
-  });
-  
-  // Zoom to content
-  if (sceneData.elements?.length > 0) {
-    excalidrawAPI.scrollToContent(sceneData.elements, {
-      fitToViewport: true,
-      animate: true
-    });
-  }
-};
+**New format:**
+```
+?documentId=e8ff97
 ```
 
-### 3. Dynamic Content Loading
+The new format is much cleaner and automatically handles the API URL construction.
 
-```typescript
-const loadUserWorkspace = async (userId) => {
-  const sceneData = await loadSceneFromAPI('/api/workspaces/current', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, timestamp: Date.now() })
-  });
-  
-  return sceneData;
-};
-```
+---
 
-## API Server Implementation
+## Complete API Loading and Saving Guide
 
-Here's an example of how to implement the server-side API:
+This guide explains how to integrate Excalidraw with external APIs for loading and saving drawing data.
 
-### Express.js Example
+### Collaboration Mode
 
-```javascript
-app.get('/api/drawings/:id', async (req, res) => {
-  try {
-    const drawing = await database.getDrawing(req.params.id);
-    
-    res.json({
-      elements: drawing.elements,
-      appState: drawing.appState,
-      files: drawing.files || {}
-    });
-  } catch (error) {
-    res.status(404).json({ error: 'Drawing not found' });
-  }
-});
+When `collaborationMode=true` is set in the URL:
 
-app.post('/api/templates', async (req, res) => {
-  try {
-    const { templateId } = req.body;
-    const template = await database.getTemplate(templateId);
-    
-    res.json({
-      scene: {
-        elements: template.elements,
-        appState: template.appState
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load template' });
-  }
-});
-```
+1. **Automatic Room Creation**: Excalidraw automatically generates a new collaboration room
+2. **URL Update**: The browser URL is updated to include the collaboration room ID and encryption key
+3. **Document ID Preservation**: Any `documentId` parameter is preserved in the collaboration URL
+4. **Shareable Link**: The updated URL can be shared with others to join the same collaboration session
+5. **Consistent Saving**: All participants save to the same document ID automatically
 
-## Best Practices
+**How it works:**
+- If no existing collaboration room is detected in the URL, a new room is created
+- **Document content is loaded first** from the API if a documentId is provided
+- The room data (ID and encryption key) is added to the URL hash
+- The `documentId` parameter is preserved in the URL query parameters
+- **Loaded content is automatically synced** to the collaboration room
+- The collaboration session starts immediately
+- Other users can join by visiting the same URL and will use the same document ID
 
-1. **Caching**: Implement client-side caching for frequently used templates
-2. **Compression**: Use gzip compression for large scene data
-3. **Validation**: Validate scene data on both client and server
-4. **Fallbacks**: Always provide fallback content for failed requests
-5. **Performance**: Lazy load templates and optimize payload sizes
-6. **User Experience**: Show loading states and error messages
+**Document Loading + Collaboration Flow:**
+1. **Load Phase**: Document content is fetched from API first
+2. **Collaboration Phase**: Room is created and content is synced to all participants
+3. **Sync Phase**: Initial content is broadcast to ensure all collaborators see the same data
+4. **Real-time Phase**: Normal collaboration features continue
 
-## Troubleshooting
+**Document ID Persistence:**
+- When collaboration mode is activated, the `documentId` is automatically preserved
+- All collaborators see and use the same document ID for saving
+- The save button automatically uses the shared document ID
+- No manual entry required for collaborators joining the session
+- **Initial document content is loaded and shared** across all participants
 
-### Common Issues
+**Security:**
+- Each collaboration room has a unique encryption key
+- All data is encrypted before being transmitted
+- Room URLs are secure and cannot be guessed
 
-1. **CORS errors**: Ensure proper CORS configuration on your API
-2. **Timeout errors**: Increase timeout for large drawings
-3. **Invalid data**: Validate your API response format
-4. **Network failures**: Implement retry logic and fallbacks
-
-### Debug Mode
-
-Enable debug logging:
-
-```typescript
-// In development, errors are logged to console
-console.log('Loading from API:', apiUrl);
-```
-
-## Migration from Existing Systems
-
-If you're migrating from existing drawing storage:
-
-1. **Export existing drawings** to Excalidraw format
-2. **Set up API endpoints** following the response format guidelines
-3. **Update your application** to use URL parameters or programmatic loading
-4. **Test thoroughly** with various drawing sizes and complexities
-
-This implementation provides a robust foundation for loading preset Excalidraw content from any API endpoint while maintaining compatibility with existing functionality. 
+**Example workflow:**
+1. Visit: `https://your-excalidraw.com/?documentId=abc123&collaborationMode=true`
+2. URL becomes: `https://your-excalidraw.com/?documentId=abc123&collaborationMode=true#room=xyz789,def456`
+3. Share the updated URL with collaborators
+4. Everyone who visits the URL joins the same drawing session AND saves to document ID "abc123"
+5. All saves across all collaborators go to the same document
