@@ -364,6 +364,17 @@ export const loadSceneFromAPI = async (
       };
     }
     
+    // Ensure collaborators is properly initialized as a Map if it exists
+    if (sceneData.appState && sceneData.appState.collaborators && !(sceneData.appState.collaborators instanceof Map)) {
+      // Create a new appState without the invalid collaborators property
+      // The restore function will use the default Map() from getDefaultAppState()
+      const { collaborators, ...restAppState } = sceneData.appState;
+      sceneData = {
+        ...sceneData,
+        appState: restAppState,
+      };
+    }
+    
     return sceneData;
     
   } catch (error: any) {
@@ -424,6 +435,17 @@ export const loadSceneEnhanced = async (
     data = restore(localDataState || null, null, null, {
       repairBindings: true,
     });
+  }
+
+  // Final safety check: ensure collaborators is always a Map
+  if (data && data.appState && !(data.appState.collaborators instanceof Map)) {
+    data = {
+      ...data,
+      appState: {
+        ...data.appState,
+        collaborators: new Map(),
+      },
+    };
   }
 
   return {

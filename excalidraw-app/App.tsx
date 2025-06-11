@@ -233,6 +233,10 @@ const initializeScene = async (opts: {
   // Check for collaboration mode parameter
   const collaborationMode = searchParams.get("collaborationMode") === "true" || searchParams.get("collaboration_mode") === "true";
 
+  // Check for auto-save parameter (default: true if documentId is present)
+  const autoSaveParam = searchParams.get("autoSave") || searchParams.get("auto_save");
+  const autoSaveEnabled = autoSaveParam !== null ? autoSaveParam === "true" : !!documentId;
+
   const localDataState = importFromLocalStorage();
 
   // Get initial collaboration link data
@@ -410,6 +414,7 @@ const initializeScene = async (opts: {
 const ExcalidrawWrapper = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(false);
   const isCollabDisabled = isRunningInIframe();
 
   const { editorTheme, appTheme, setAppTheme } = useHandleAppTheme();
@@ -560,6 +565,13 @@ const ExcalidrawWrapper = () => {
         (window as any).currentDocumentId = data.documentId;
         console.log('✅ Document ID stored:', data.documentId);
         
+        // Check and set auto-save setting from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const autoSaveParam = urlParams.get("autoSave") || urlParams.get("auto_save");
+        const autoSaveEnabledFromUrl = autoSaveParam !== null ? autoSaveParam === "true" : true; // Default to true if documentId exists
+        setAutoSaveEnabled(autoSaveEnabledFromUrl);
+        console.log('🔄 Auto-save enabled:', autoSaveEnabledFromUrl);
+        
         // If we're in collaboration mode and have loaded scene data, sync it to the room
         if (collabAPI?.isCollaborating() && data.scene?.elements && (data.scene.elements.length || 0) > 0) {
           console.log('🔄 Syncing loaded document data to collaboration room:', data.scene.elements.length, 'elements');
@@ -591,6 +603,12 @@ const ExcalidrawWrapper = () => {
           setCurrentDocumentId(urlDocumentId);
           (window as any).currentDocumentId = urlDocumentId;
           console.log('✅ Document ID extracted from collaboration URL:', urlDocumentId);
+          
+          // Check and set auto-save setting from URL
+          const autoSaveParam = urlParams.get("autoSave") || urlParams.get("auto_save");
+          const autoSaveEnabledFromUrl = autoSaveParam !== null ? autoSaveParam === "true" : true; // Default to true if documentId exists
+          setAutoSaveEnabled(autoSaveEnabledFromUrl);
+          console.log('🔄 Auto-save enabled:', autoSaveEnabledFromUrl);
         }
       }
       
@@ -746,11 +764,61 @@ const ExcalidrawWrapper = () => {
     };
   }, [excalidrawAPI]);
 
+  // Auto-save to API with debouncing
+  const debouncedApiSave = useCallback(
+    debounce(async (elements: readonly OrderedExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      const documentId = currentDocumentId || (window as any).currentDocumentId;
+      console.log('⏰ debouncedApiSave executing', { 
+        documentId, 
+        autoSaveEnabled, 
+        elementsCount: elements.length,
+        hasDocumentId: !!documentId,
+        condition: !!(documentId && autoSaveEnabled)
+      });
+      
+      if (documentId && autoSaveEnabled) {
+        try {
+          console.log('🔄 Auto-saving to API...', { documentId, elementsCount: elements.length });
+          await saveSceneToAPI(documentId, elements, appState, files);
+          console.log('✅ Auto-saved to API successfully');
+          
+          // Show a subtle toast notification
+          if (excalidrawAPI) {
+            excalidrawAPI.setToast({ message: '✅ Auto-saved', duration: 1000 });
+          }
+        } catch (error) {
+          console.error('❌ Auto-save failed:', error);
+          // Show error toast
+          if (excalidrawAPI) {
+            excalidrawAPI.setToast({ 
+              message: '⚠️ Auto-save failed', 
+              duration: 3000 
+            });
+          }
+        }
+      } else {
+        console.log('❌ Auto-save skipped', { 
+          reason: !documentId ? 'No document ID' : !autoSaveEnabled ? 'Auto-save disabled' : 'Unknown',
+          documentId,
+          autoSaveEnabled
+        });
+      }
+    }, 2000), // 2 second debounce
+    [autoSaveEnabled, currentDocumentId, excalidrawAPI] // Dependencies that should trigger recreation
+  );
+
   const onChange = (
     elements: readonly OrderedExcalidrawElement[],
     appState: AppState,
     files: BinaryFiles,
   ) => {
+    console.log('🔄 onChange triggered', { 
+      elementsCount: elements.length, 
+      autoSaveEnabled, 
+      currentDocumentId,
+      windowDocumentId: (window as any).currentDocumentId 
+    });
+
     if (collabAPI?.isCollaborating()) {
       collabAPI.syncElements(elements);
     }
@@ -786,6 +854,14 @@ const ExcalidrawWrapper = () => {
         }
       });
     }
+
+    // Auto-save to API (debounced)
+    console.log('🎯 Calling debouncedApiSave with:', { 
+      autoSaveEnabled, 
+      documentId: currentDocumentId || (window as any).currentDocumentId,
+      elementsCount: elements.length 
+    });
+    debouncedApiSave(elements, appState, files);
 
     // Render the debug scene if the debug canvas is available
     if (debugCanvasRef.current && excalidrawAPI) {

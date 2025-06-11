@@ -777,6 +777,10 @@ export const restoreAppState = (
       isFiniteNumber(appState.gridStep) ? appState.gridStep : DEFAULT_GRID_STEP,
     ),
     editingFrame: null,
+    // Ensure collaborators is always a Map - critical for collaboration features
+    collaborators: nextAppState.collaborators instanceof Map 
+      ? nextAppState.collaborators 
+      : new Map(),
   };
 };
 
