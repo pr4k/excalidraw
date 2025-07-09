@@ -783,9 +783,9 @@ const ExcalidrawWrapper = () => {
           console.log('✅ Auto-saved to API successfully');
           
           // Show a subtle toast notification
-          if (excalidrawAPI) {
-            excalidrawAPI.setToast({ message: '✅ Auto-saved', duration: 1000 });
-          }
+          // if (excalidrawAPI) {
+          //   excalidrawAPI.setToast({ message: '✅ Auto-saved', duration: 1000 });
+          // }
         } catch (error) {
           console.error('❌ Auto-save failed:', error);
           // Show error toast
